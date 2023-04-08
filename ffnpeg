@@ -1,0 +1,665 @@
+#!/bin/bash
+
+usage_info () {
+	echo ""
+	echo "Shortcut for common ffmpeg usages so I don't I have to keep looking them up"
+	echo "Usage: ffnpeg [options] <command> [options] file ..."
+	echo ""
+	echo "Available Commands:"
+	echo "segment/split	Splits media into segments of a given length"
+	echo "convert		Converts one or more files into a different format"
+	echo "trim		Trims media to the given timestamps"
+	echo "concat		Concats one or more videos"
+	echo "extract		Extracts the audio or video from the video"
+	echo "musicvid	Combines an audio file with a static image"
+	echo ""
+	echo "Universal Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+}
+
+echo_universal_toggled_options () {
+	echo "-d 		deletes input file afterwards (use with caution!)"
+	echo "-c 		turn off -c copy (needed when converting between codecs)"
+	echo "-y		overwrite output files without asking"
+	echo "-p		runs ffmpeg on each file in parallel"
+}
+
+echo_universal_filename_options () {
+	echo "-n NAME 	sets the output filename and extension"
+	echo "-s SUFFIX 	adds a suffix to the output filenames"
+	echo "-e FORMAT 	sets the output's extension. Will overwrite -n's extension"
+}
+
+#=================================
+# Universal optargs
+#=================================
+
+# ==== configs ====
+output_file=''
+output_suffix=''
+output_extension=''
+
+# usage: $(get_filename DEFAULT)
+get_filename () {
+	local filename="$1"
+	if [ "$output_file" != "" ]; then filename="${output_file%.*}"; fi
+	echo "$filename"
+}
+
+# usage: $(get_suffix DEFAULT)
+get_suffix () {
+	local suffix="$1"
+	if [ "$output_suffix" != "" ]; then suffix="$output_suffix"; fi
+	echo "$suffix"
+}
+
+# usage: $(get_extension DEFAULT)
+get_extension () {
+	local extension="$1"
+	if [ "$output_file" != "" ]; then extension="${output_file##*.}"; fi
+	if [ "$output_extension" != "" ]; then extension="${output_extension}"; fi
+	echo "$extension"
+}
+
+# ==== toggles ====
+delete_after=false
+y_overwrite=''
+c_copy='-c copy'
+is_parallel=false
+
+toggle_delete_after () {
+	delete_after=true
+}
+
+toggle_y_overwrite () {
+	y_overwrite='-y'
+}
+
+toggle_c_copy () {
+	c_copy=''
+}
+
+toggle_is_parallel () {
+	is_parallel=true
+}
+
+#=================================
+# Main
+#=================================
+
+main_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dn:cys:e:p" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after ;;
+			n)
+			  	output_file="${OPTARG}" ;;
+			c)
+				toggle_c_copy ;;
+			y)
+				toggle_y_overwrite ;;
+			s)
+			  	output_suffix="${OPTARG}" ;;
+			e)
+			  	output_extension="${OPTARG}" ;;
+			p)
+			  	toggle_is_parallel ;;
+			\?)
+			  echo "Invalid argument: ${OPTARG}"
+			  exit 1
+			  ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    main "${@}"
+}
+
+main () {
+	if [ $# -eq 0 ]; then 
+		usage_info 
+		exit 1 
+	fi
+
+	command=${1}
+	case ${command} in 
+		segment | split) 
+			segment_optargs "${@:2}" ;;
+		convert)
+      		convert_optargs "${@:2}" ;;
+      	trim)
+      		trim_optargs "${@:2}" ;;
+      	concat)
+      		concat_optargs "${@:2}" ;;
+      	extract)
+      		extract_optargs "${@:2}" ;;
+      	musicvid)
+      		musicvid_optargs "${@:2}" ;;
+      	*)
+			echo "Invalid command: ${1}"
+			exit 1
+			;;
+	esac
+}
+
+#=================================
+# Segment
+#=================================
+
+segment_usage_info () {
+	echo ""
+	echo "Splits media into segments of a given length"
+	echo "Usage: ffnpeg {segment|split} [OPTIONS] <segment length> file ..."
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+}
+
+segment_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dn:cys:e:p" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after;;
+			n)
+			  	output_file="${OPTARG}";;
+			c)
+				toggle_c_copy ;;
+			y) 
+			  	toggle_y_overwrite;;
+			s)
+			  	output_suffix="${OPTARG}" ;;
+			e)
+			  	output_extension="${OPTARG}" ;;
+			p)
+			  	toggle_is_parallel ;;
+			\?)
+			  	echo "Invalid argument: ${OPTARG}"
+			  	exit 1
+			  	;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    segment_main "${@}"
+}
+
+segment_main () {
+    if [ $# -lt 2 ]; then
+		segment_usage_info
+		exit 1
+	fi
+
+	local segment_length=$1
+	local input_files=("${@:2}")
+	
+	for i in "${input_files[@]}"; do
+		if [ "$is_parallel" = true ]; then segment_exec ${segment_length} "${i}" &
+		else segment_exec ${segment_length} "${i}"; fi
+	done
+	wait
+}
+
+# $1 = segment length
+# $2 = input file
+segment_exec () {
+	local filename=$(get_filename "${2%.*}")
+	local extension=$(get_extension "${2##*.}")
+	local suffix=$(get_suffix '')
+
+	ffmpeg -i "${2}" -map 0 ${c_copy} ${y_overwrite} -f segment -segment_time ${1} \
+	-reset_timestamps 1 "${filename}${suffix}_%03d.${extension}" &&
+	{ if [ "$delete_after" = true ]; then rm "${2}" ; fi; }
+}
+
+#=================================
+# Convert
+#=================================
+
+convert_usage_info () {
+	echo ""
+	echo "Converts one or more files into a different format."
+	echo "Usage: ffnpeg convert [OPTIONS] file ..."
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+	echo "		Note: -n or -e is MANDATORY"
+}
+
+convert_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dcyn:s:e:p" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after;;
+			c) 
+			  	toggle_c_copy;;
+			y) 
+			  	toggle_y_overwrite;;
+			n)
+			  	output_file="${OPTARG}";;
+			s)
+			  	output_suffix="${OPTARG}" ;;
+			e)
+			  	output_extension="${OPTARG}" ;;
+			p)
+			  	toggle_is_parallel ;;
+			\?)
+			  echo "Invalid argument: ${OPTARG}"
+			  exit 1
+			  ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    convert_main "${@}"
+}
+
+convert_main () {
+	if [ $# -lt 1 ] || [ "$(get_extension '')" = '' ] ; then
+		convert_usage_info
+		exit 1
+	fi
+
+	local input_files=("${@:1}")
+	
+	for i in "${input_files[@]}"; do
+		if [ "$is_parallel" = true ]; then convert_exec "${i}" &
+		else convert_exec "${i}"; fi
+	done
+	wait
+}
+
+# $1 = input file
+convert_exec () {
+	local filename=$(get_filename "${1%.*}")
+	local extension=$(get_extension '')
+	local suffix=$(get_suffix '')
+
+	local output="${filename}${suffix}.${extension}"
+	ffmpeg -i "${1}" ${c_copy} ${y_overwrite} "${output}" &&
+	{ if [ "$delete_after" = true ]; then rm "${1}" ; fi; }
+}
+
+#=================================
+# Trim
+#=================================
+
+trim_usage_info () {
+	echo ""
+	echo "Trims media to the given timestamps"
+	echo "Usage:	ffnpeg trim [OPTIONS] <file> <start> <end>"
+	echo "or	ffnpeg trim [OPTIONS] <start> <end> file ..."
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+	echo "-a		may cut to before the start time in order to avoid black screen"
+}
+
+avoid_negative=''
+
+trim_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dyn:cs:e:ap" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after;;
+			y) 
+			  	toggle_y_overwrite;;
+			n)
+			  	output_file="${OPTARG}";;
+			c) 
+			  	toggle_c_copy;;
+			s)
+			  	output_suffix="${OPTARG}" ;;
+			e)
+			  	output_extension="${OPTARG}" ;;
+			a)
+			  	avoid_negative='-avoid_negative_ts make_zero' ;;
+			p)
+			  	toggle_is_parallel ;;
+			\?)
+			  	echo "Invalid argument: ${OPTARG}"
+			  	exit 1
+			  	;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    # invalid args
+    if [ $# -lt 3 ]; then
+		trim_usage_info
+		exit 1
+	fi
+
+	# regex checks if first arg is a timestamp
+    if [[ $1 =~ ^([0-9])+(:[0-9][0-9])*$ ]]; then
+    	trimm_main "${@}"
+    else
+    	trim_main "${@}"
+    fi
+}
+
+trim_main () {
+	if [ $# -ne 3 ]; then
+		trim_usage_info
+		exit 1
+	fi
+
+	trimm_main "${2}" "${3}" "${1}"
+}
+
+trimm_main () {
+	local start="$1"
+	local end="$2"
+	local input_files=("${@:3}")
+	
+	for i in "${input_files[@]}"; do
+		if [ "$is_parallel" = true ]; then trim_exec "${start}" "${end}" "${i}" &
+		else trim_exec "${start}" "${end}" "${i}"; fi
+	done
+	wait
+}
+
+# $1 = start
+# $2 = end
+# $3 = input file
+trim_exec () {
+	local filename=$(get_filename "${3%.*}")
+	local extension=$(get_extension "${3##*.}")
+	local suffix=$(get_suffix '_TRIMMED')
+
+	local output="${filename}${suffix}.${extension}"
+
+	ffmpeg -i "${3}" ${y_overwrite} -ss "${1}" -to "${2}" ${c_copy} ${avoid_negative} "${output}" &&
+	{ if [ "$delete_after" = true ]; then rm "${3}" ; fi; }
+}
+
+#=================================
+# Concat
+#=================================
+
+concat_usage_info () {
+	echo ""
+	echo "Concats one or more videos"
+	echo "Usage: ffnpeg concat [OPTIONS] file ..."
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+}
+
+concat_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dyn:ce:p" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after;;
+			y) 
+			  	toggle_y_overwrite;;
+			n)
+			  	output_file="${OPTARG}";;
+			c) 
+			  	toggle_c_copy;;
+			e)
+			  	output_extension="${OPTARG}" ;;
+			p)
+			  	toggle_is_parallel ;;
+			\?)
+			  	echo "Invalid argument: ${OPTARG}"
+			  	exit 1
+			  	;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    concat_main "${@}"
+}
+
+concat_main () {
+	if [ $# -lt 1 ]; then
+		concat_usage_info
+		exit 1
+	fi
+
+	concat_exec "${@}"
+}
+
+concat_exec () {
+	local filename=$(get_filename "output")
+	local extension=$(get_extension "${1##*.}")
+	local suffix=$(get_suffix '')
+
+	local output="${filename}${suffix}.${extension}"
+
+	local input_files=("${@}")
+
+	ffmpeg -f concat -safe 0 ${y_overwrite} \
+	 -i <(for f in "${input_files[@]}"; do echo "file '$PWD/$f'"; done) \
+	 ${c_copy} "${output}" \
+	 && { if [ "$delete_after" = true ]; then rm "${input_files[@]}" ; fi; }
+}
+
+#=================================
+# Extract
+#=================================
+
+extract_usage_info () {
+	echo ""
+	echo "Extracts the audio or video from the video"
+	echo "Usage: ffnpeg extract [OPTIONS] file ..."
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo "-a FORMAT		audio format to extract to"
+	echo "-v FORMAT		video format to extract to"
+	echo "-s SUFFIX		adds a suffix to the output filenames"
+}
+
+extracted_audio_format=''
+extracted_video_format=''
+
+extract_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dyca:v:s:p" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after;;
+			y) 
+			  	toggle_y_overwrite;;
+			c) 
+			  	toggle_c_copy;;
+			a)
+			  	extracted_audio_format="${OPTARG}";;
+			v)
+			  	extracted_video_format="${OPTARG}";;
+			s)
+			  	output_suffix="${OPTARG}";;
+			p)
+			  	toggle_is_parallel ;;
+			\?)
+			  	echo "Invalid argument: ${OPTARG}"
+			  	exit 1
+			  	;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    extract_main "${@}"
+}
+
+extract_main () {
+	if [ $# -lt 1 ]; then
+		extract_usage_info
+		exit 1
+	fi
+
+	local input_files=("${@}")
+	for i in "${input_files[@]}"; do
+		if [ "$is_parallel" = true ]; then extract_exec "${i}" &
+		else extract_exec "${i}"; fi
+	done
+	wait
+}
+
+get_ca_copy () {
+	local ca_copy='-c:a copy'
+	if [ "${c_copy}" = '' ]; then ca_copy=''; fi
+	echo "$ca_copy"
+}
+
+get_cv_copy () {
+	local cv_copy='-c:v copy'
+	if [ "${c_copy}" = '' ]; then cv_copy=''; fi
+	echo "$cv_copy"
+}
+
+# $1 = input file
+extract_exec () {
+	local filename=$(get_filename "${1%.*}")
+	local a_suffix=$(get_suffix '')
+	local v_suffix=$(get_suffix '_EXTRACTED')
+
+	local ca_copy=$(get_ca_copy)
+	local cv_copy=$(get_cv_copy)
+
+	local a_success=true
+	local v_success=true
+
+	if [ "$extracted_audio_format" != '' ]; then 
+		local output="${filename}${a_suffix}.${extracted_audio_format}"
+		ffmpeg -i "${1}" ${y_overwrite} ${ca_copy} -q:a 0 -map a "${output}" || 
+		a_success=false
+	fi
+
+	if [ "$extracted_video_format" != '' ]; then 
+		local output="${filename}${v_suffix}.${extracted_video_format}"
+		ffmpeg -i "${1}" ${y_overwrite} ${cv_copy} -q:v 0 -map v "${output}" || 
+		v_success=false
+	fi
+
+	if [ "$a_success" = true ] && [ "$v_success" = true ]; then
+		if [ "$delete_after" = true ]; then rm "${i}" ; fi; 
+	fi
+}
+
+#=================================
+# Musicvid
+#=================================
+
+musicvid_usage_info () {
+	echo ""
+	echo "Combines an audio file with a static image"
+	echo "Usage: ffnpeg musicvid [OPTIONS] <image> files ..."
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+	echo "-l SCALE	sets the scale of the video (default 1280:720)"
+}
+
+musicvid_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dyn:cs:e:l:p" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after;;
+			y) 
+			  	toggle_y_overwrite;;
+			n)
+			  	output_file="${OPTARG}";;
+			c) 
+			  	toggle_c_copy;;
+			s)
+			  	output_suffix="${OPTARG}";;
+			e)
+			  	output_extension="${OPTARG}" ;;
+			l)
+			  	output_scale="${OPTARG}" ;;
+			p)
+			  	toggle_is_parallel ;;
+			\?)
+			  	echo "Invalid argument: ${OPTARG}"
+			  	exit 1
+			  	;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    musicvid_main "${@}"
+}
+
+musicvid_main () {
+	if [ $# -lt 2 ]; then
+		musicvid_usage_info
+		exit 1
+	fi
+
+	local image="$1"
+
+	local input_files=("${@:2}")
+	for i in "${input_files[@]}"; do
+		if [ "$is_parallel" = true ]; then musicvid_exec "$image" "${i}" &
+		else musicvid_exec "$image" "${i}"; fi
+	done
+	wait
+}
+
+# $1 = image
+# $2 = video
+musicvid_exec () {
+	musicvid_exec_inner "$image" "${i}" &&
+	{ if [ "$delete_after" = true ]; then rm "${i}" ; fi; }
+}
+
+output_scale=''
+
+get_output_scale () {
+	local scale = '1280:720'
+	if [ "$output_scale" != '' ]; then scale="$output_scale"; fi
+	echo "$scale"
+}
+
+# $1 = image
+# $2 = video
+musicvid_exec_inner () {
+	local filename=$(get_filename "${2%.*}")
+	local suffix=$(get_suffix '')
+
+	local acodec_copy=$(get_acodec_copy)
+
+	local output1="${filename}${suffix}.flv" 
+	local scale="1280:720"
+
+	ffmpeg -r 1 -loop 1 -i "$1" -i "$2" -c:a copy -r 1 -shortest \
+	 -vf scale="$scale" "$output1" || return 1
+
+	local extension=$(get_extension '')
+	if [ "$extension" != '' ]; then
+		local output2="${filename}${suffix}.${extension}" 
+		ffmpeg -i "$output1" $c_copy "$output2"
+		rm "$output1"
+	else
+		return 0
+	fi
+}
+
+#=================================
+# Actual entrance point
+#=================================
+
+main_optargs "${@}"
+
+
