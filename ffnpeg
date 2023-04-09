@@ -6,9 +6,10 @@ usage_info () {
 	echo "Usage: ffnpeg [options] <command> [options] file ..."
 	echo ""
 	echo "Available Commands:"
-	echo "segment/split	Splits media into segments of a given length"
-	echo "convert		Converts one or more files into a different format"
+	echo "segment	Splits media into segments of a given length"
+	echo "split		Splits the media at the timestamp"
 	echo "trim		Trims media to the given timestamps"
+	echo "convert		Converts one or more files into a different format"
 	echo "concat		Concats one or more videos"
 	echo "extract		Extracts the audio or video from the video"
 	echo "musicvid	Combines an audio file with a static image"
@@ -23,6 +24,7 @@ echo_universal_toggled_options () {
 	echo "-c 		turn off -c copy (needed when converting between codecs)"
 	echo "-y		overwrite output files without asking"
 	echo "-p		runs ffmpeg on each file in parallel"
+	echo "-q		turns off quiet mode"
 }
 
 echo_universal_filename_options () {
@@ -67,6 +69,8 @@ delete_after=false
 y_overwrite=''
 c_copy='-c copy'
 is_parallel=false
+q='-hide_banner'
+avoid_negative=''
 
 toggle_delete_after () {
 	delete_after=true
@@ -84,6 +88,14 @@ toggle_is_parallel () {
 	is_parallel=true
 }
 
+toggle_is_verbose () {
+	q=''
+}
+
+toggle_avoid_negative () {
+	avoid_negative='-avoid_negative_ts make_zero'
+}
+
 #=================================
 # Main
 #=================================
@@ -91,7 +103,7 @@ toggle_is_parallel () {
 main_optargs () {
 	# process universal optargs
 	local OPTIND
-    while getopts "dn:cys:e:p" option; do
+    while getopts "dn:cys:e:pq" option; do
     	case "${option}" in
         	d) 
 			  	toggle_delete_after ;;
@@ -107,6 +119,8 @@ main_optargs () {
 			  	output_extension="${OPTARG}" ;;
 			p)
 			  	toggle_is_parallel ;;
+			q)
+			  	toggle_is_verbose ;;
 			\?)
 			  echo "Invalid argument: ${OPTARG}"
 			  exit 1
@@ -126,12 +140,14 @@ main () {
 
 	command=${1}
 	case ${command} in 
-		segment | split) 
+		segment) 
 			segment_optargs "${@:2}" ;;
-		convert)
-      		convert_optargs "${@:2}" ;;
+		split)
+			split_optargs "${@:2}" ;;
       	trim)
       		trim_optargs "${@:2}" ;;
+		convert)
+      		convert_optargs "${@:2}" ;;
       	concat)
       		concat_optargs "${@:2}" ;;
       	extract)
@@ -152,7 +168,7 @@ main () {
 segment_usage_info () {
 	echo ""
 	echo "Splits media into segments of a given length"
-	echo "Usage: ffnpeg {segment|split} [OPTIONS] <segment length> file ..."
+	echo "Usage: ffnpeg segment [OPTIONS] <segment length> file ..."
 	echo ""
 	echo "Options:"
 	echo_universal_toggled_options
@@ -162,7 +178,7 @@ segment_usage_info () {
 segment_optargs () {
 	# process universal optargs
 	local OPTIND
-    while getopts "dn:cys:e:p" option; do
+    while getopts "dn:cys:e:pq" option; do
     	case "${option}" in
         	d) 
 			  	toggle_delete_after;;
@@ -178,6 +194,8 @@ segment_optargs () {
 			  	output_extension="${OPTARG}" ;;
 			p)
 			  	toggle_is_parallel ;;
+			q)
+			  	toggle_is_verbose ;;
 			\?)
 			  	echo "Invalid argument: ${OPTARG}"
 			  	exit 1
@@ -212,80 +230,91 @@ segment_exec () {
 	local extension=$(get_extension "${2##*.}")
 	local suffix=$(get_suffix '')
 
-	ffmpeg -i "${2}" -map 0 ${c_copy} ${y_overwrite} -f segment -segment_time ${1} \
+	ffmpeg $q -i "${2}" -map 0 ${c_copy} ${y_overwrite} -f segment -segment_time ${1} \
 	-reset_timestamps 1 "${filename}${suffix}_%03d.${extension}" &&
 	{ if [ "$delete_after" = true ]; then rm "${2}" ; fi; }
 }
 
 #=================================
-# Convert
+# Split
 #=================================
 
-convert_usage_info () {
+split_usage_info () {
 	echo ""
-	echo "Converts one or more files into a different format."
-	echo "Usage: ffnpeg convert [OPTIONS] file ..."
+	echo "Splits the media at the timestamp"
+	echo "Usage: ffnpeg split [OPTIONS] <timestamp> file ..."
 	echo ""
 	echo "Options:"
 	echo_universal_toggled_options
 	echo_universal_filename_options
-	echo "		Note: -n or -e is MANDATORY"
+	echo "-a		may cut to before the start time in order to avoid black screen"
 }
 
-convert_optargs () {
+split_optargs () {
 	# process universal optargs
 	local OPTIND
-    while getopts "dcyn:s:e:p" option; do
+    while getopts "dn:cys:e:paq" option; do
     	case "${option}" in
         	d) 
 			  	toggle_delete_after;;
-			c) 
-			  	toggle_c_copy;;
-			y) 
-			  	toggle_y_overwrite;;
 			n)
 			  	output_file="${OPTARG}";;
+			c)
+				toggle_c_copy ;;
+			y) 
+			  	toggle_y_overwrite;;
 			s)
 			  	output_suffix="${OPTARG}" ;;
 			e)
 			  	output_extension="${OPTARG}" ;;
 			p)
 			  	toggle_is_parallel ;;
+			a)
+			  	toggle_avoid_negative ;;
+			q)
+			  	toggle_is_verbose ;;
 			\?)
-			  echo "Invalid argument: ${OPTARG}"
-			  exit 1
-			  ;;
+			  	echo "Invalid argument: ${OPTARG}"
+			  	exit 1
+			  	;;
         esac
     done
     shift $((OPTIND-1))
 
-    convert_main "${@}"
+    split_main "${@}"
 }
 
-convert_main () {
-	if [ $# -lt 1 ] || [ "$(get_extension '')" = '' ] ; then
-		convert_usage_info
+# $1 = timestamp
+split_main () {
+    if [ $# -lt 2 ]; then
+		split_usage_info
 		exit 1
 	fi
 
-	local input_files=("${@:1}")
+	local timestamp="$1"
+	local input_files=("${@:2}")
 	
 	for i in "${input_files[@]}"; do
-		if [ "$is_parallel" = true ]; then convert_exec "${i}" &
-		else convert_exec "${i}"; fi
+		if [ "$is_parallel" = true ]; then split_exec ${timestamp} "${i}" &
+		else split_exec ${timestamp} "${i}"; fi
 	done
 	wait
 }
 
-# $1 = input file
-convert_exec () {
-	local filename=$(get_filename "${1%.*}")
-	local extension=$(get_extension '')
-	local suffix=$(get_suffix '')
+# $1 = timestamp
+# $2 = input file
+split_exec () {
+	local filename=$(get_filename "${2%.*}")
+	local extension=$(get_extension "${2##*.}")
+	local suffix=$(get_suffix '_SPLIT')
 
 	local output="${filename}${suffix}.${extension}"
-	ffmpeg -i "${1}" ${c_copy} ${y_overwrite} "${output}" &&
-	{ if [ "$delete_after" = true ]; then rm "${1}" ; fi; }
+	local output2="${filename}${suffix}2.${extension}"
+	local duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 $2)"
+
+	ffmpeg $q -i "${2}" ${y_overwrite} -ss 0 -to "${1}" ${c_copy} ${avoid_negative} "${output}" &&
+	ffmpeg $q -i "${2}" ${y_overwrite} -ss "${1}" -to "${duration}" ${c_copy} ${avoid_negative} "${output2}"
+	{ if [ "$delete_after" = true ]; then rm "${2}" ; fi; }
 }
 
 #=================================
@@ -304,12 +333,10 @@ trim_usage_info () {
 	echo "-a		may cut to before the start time in order to avoid black screen"
 }
 
-avoid_negative=''
-
 trim_optargs () {
 	# process universal optargs
 	local OPTIND
-    while getopts "dyn:cs:e:ap" option; do
+    while getopts "dyn:cs:e:apq" option; do
     	case "${option}" in
         	d) 
 			  	toggle_delete_after;;
@@ -324,9 +351,11 @@ trim_optargs () {
 			e)
 			  	output_extension="${OPTARG}" ;;
 			a)
-			  	avoid_negative='-avoid_negative_ts make_zero' ;;
+			  	toggle_avoid_negative ;;
 			p)
 			  	toggle_is_parallel ;;
+			q)
+			  	toggle_is_verbose ;;
 			\?)
 			  	echo "Invalid argument: ${OPTARG}"
 			  	exit 1
@@ -385,6 +414,79 @@ trim_exec () {
 }
 
 #=================================
+# Convert
+#=================================
+
+convert_usage_info () {
+	echo ""
+	echo "Converts one or more files into a different format."
+	echo "Usage: ffnpeg convert [OPTIONS] file ..."
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+	echo "		Note: -n or -e is MANDATORY"
+}
+
+convert_optargs () {
+	# process universal optargs
+	local OPTIND
+    while getopts "dcyn:s:e:pq" option; do
+    	case "${option}" in
+        	d) 
+			  	toggle_delete_after;;
+			c) 
+			  	toggle_c_copy;;
+			y) 
+			  	toggle_y_overwrite;;
+			n)
+			  	output_file="${OPTARG}";;
+			s)
+			  	output_suffix="${OPTARG}" ;;
+			e)
+			  	output_extension="${OPTARG}" ;;
+			p)
+			  	toggle_is_parallel ;;
+			q)
+			  	toggle_is_verbose ;;
+			\?)
+			  echo "Invalid argument: ${OPTARG}"
+			  exit 1
+			  ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    convert_main "${@}"
+}
+
+convert_main () {
+	if [ $# -lt 1 ] || [ "$(get_extension '')" = '' ] ; then
+		convert_usage_info
+		exit 1
+	fi
+
+	local input_files=("${@:1}")
+	
+	for i in "${input_files[@]}"; do
+		if [ "$is_parallel" = true ]; then convert_exec "${i}" &
+		else convert_exec "${i}"; fi
+	done
+	wait
+}
+
+# $1 = input file
+convert_exec () {
+	local filename=$(get_filename "${1%.*}")
+	local extension=$(get_extension '')
+	local suffix=$(get_suffix '')
+
+	local output="${filename}${suffix}.${extension}"
+	ffmpeg -i "${1}" ${c_copy} ${y_overwrite} "${output}" &&
+	{ if [ "$delete_after" = true ]; then rm "${1}" ; fi; }
+}
+
+#=================================
 # Concat
 #=================================
 
@@ -401,7 +503,7 @@ concat_usage_info () {
 concat_optargs () {
 	# process universal optargs
 	local OPTIND
-    while getopts "dyn:ce:p" option; do
+    while getopts "dyn:ce:pq" option; do
     	case "${option}" in
         	d) 
 			  	toggle_delete_after;;
@@ -415,6 +517,8 @@ concat_optargs () {
 			  	output_extension="${OPTARG}" ;;
 			p)
 			  	toggle_is_parallel ;;
+			q)
+			  	toggle_is_verbose ;;
 			\?)
 			  	echo "Invalid argument: ${OPTARG}"
 			  	exit 1
@@ -472,7 +576,7 @@ extracted_video_format=''
 extract_optargs () {
 	# process universal optargs
 	local OPTIND
-    while getopts "dyca:v:s:p" option; do
+    while getopts "dyca:v:s:pq" option; do
     	case "${option}" in
         	d) 
 			  	toggle_delete_after;;
@@ -488,6 +592,8 @@ extract_optargs () {
 			  	output_suffix="${OPTARG}";;
 			p)
 			  	toggle_is_parallel ;;
+			q)
+			  	toggle_is_verbose ;;
 			\?)
 			  	echo "Invalid argument: ${OPTARG}"
 			  	exit 1
@@ -572,7 +678,7 @@ musicvid_usage_info () {
 musicvid_optargs () {
 	# process universal optargs
 	local OPTIND
-    while getopts "dyn:cs:e:l:p" option; do
+    while getopts "dyn:cs:e:l:pq" option; do
     	case "${option}" in
         	d) 
 			  	toggle_delete_after;;
@@ -590,6 +696,8 @@ musicvid_optargs () {
 			  	output_scale="${OPTARG}" ;;
 			p)
 			  	toggle_is_parallel ;;
+			q)
+			  	toggle_is_verbose ;;
 			\?)
 			  	echo "Invalid argument: ${OPTARG}"
 			  	exit 1
