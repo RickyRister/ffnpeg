@@ -6,7 +6,7 @@ usage_info () {
 	echo "Usage: ffnpeg [options] <command> [options] file ..."
 	echo ""
 	echo "Available Commands:"
-	echo "segment	Splits media into segments of a given length"
+	echo "segment		Splits media into segments of a given length"
 	echo "split		Splits the media at the timestamp"
 	echo "trim		Trims media to the given timestamps"
 	echo "convert		Converts one or more files into a different format"
@@ -24,7 +24,7 @@ echo_universal_toggled_options () {
 	echo "-c 		turn off -c copy (needed when converting between codecs)"
 	echo "-y		overwrite output files without asking"
 	echo "-p		runs ffmpeg on each file in parallel"
-	echo "-q		turns off quiet mode"
+	echo "-q		turn on quiet mode"
 }
 
 echo_universal_filename_options () {
@@ -34,7 +34,7 @@ echo_universal_filename_options () {
 }
 
 #=================================
-# Universal optargs
+# Universal Optargs
 #=================================
 
 # ==== configs ====
@@ -70,7 +70,6 @@ y_overwrite=''
 c_copy='-c copy'
 is_parallel=false
 q='-hide_banner'
-avoid_negative=''
 
 toggle_delete_after () {
 	delete_after=true
@@ -88,72 +87,121 @@ toggle_is_parallel () {
 	is_parallel=true
 }
 
-toggle_is_verbose () {
-	q=''
+toggle_is_quiet () {
+	q='-hide_banner -v quiet -stats'
 }
+
+
+#=================================
+# Specific Optargs
+#=================================
+
+# ==== used by trim and split ====
+avoid_negative=''
 
 toggle_avoid_negative () {
 	avoid_negative='-avoid_negative_ts make_zero'
 }
 
+# ==== used by extract ====
+extracted_audio_format=''
+extracted_video_format=''
+
+# ==== used by musicvid ====
+output_scale=''
+
+get_output_scale () {
+	local scale = '1280:720'
+	if [ "$output_scale" != '' ]; then scale="$output_scale"; fi
+	echo "$scale"
+}
+
+
 #=================================
 # Main
 #=================================
 
-main_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dn:cys:e:pq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after ;;
-			n)
-			  	output_file="${OPTARG}" ;;
-			c)
-				toggle_c_copy ;;
-			y)
-				toggle_y_overwrite ;;
-			s)
-			  	output_suffix="${OPTARG}" ;;
-			e)
-			  	output_extension="${OPTARG}" ;;
-			p)
-			  	toggle_is_parallel ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  echo "Invalid argument: ${OPTARG}"
-			  exit 1
-			  ;;
-        esac
-    done
-    shift $((OPTIND-1))
+process_args () {
+	if [ $# -lt 1 ]; then 
+    	usage_info
+    	exit 1
+  	fi
 
-    main "${@}"
+	while [ $# -gt 0 ]; do
+		local OPTIND=1
+    	while getopts "dcypqn:s:e:ta:v:l:" option; do
+    		case "${option}" in
+    			# ==== Universal Optargs ====
+        		d) 
+			 	 	toggle_delete_after ;;
+				c)
+					toggle_c_copy ;;
+				y)
+					toggle_y_overwrite ;;
+				p)
+				  	toggle_is_parallel ;;
+				q)
+			 	 	toggle_is_quiet ;;
+				n)
+					output_file="${OPTARG}" ;;
+				s)
+			  		output_suffix="${OPTARG}" ;;
+				e)
+			  		output_extension="${OPTARG}" ;;
+
+				# ==== Specific Optargs ====
+					# used by trim + split
+				t)	
+					toggle_avoid_negative ;;
+
+					# used by extract
+				a)
+			  		extracted_audio_format="${OPTARG}";;
+				v)
+			  		extracted_video_format="${OPTARG}";;
+
+					# used by musicvid
+				l)  
+					output_scale="${OPTARG}" ;;
+
+				\?)
+			  		echo "Invalid argument: ${OPTARG}"
+			  		exit 1 ;;
+        	esac
+    	done
+    	shift $((OPTIND-1))
+
+    	if [ $# -gt 0 ]; then args+=("$1"); fi
+    	shift 1
+    done
+
+    select_command "${args[@]}"
 }
 
-main () {
+select_command () {
 	if [ $# -eq 0 ]; then 
 		usage_info 
 		exit 1 
 	fi
 
-	command=${1}
+	local command=${1}
+	shift 1
+
 	case ${command} in 
 		segment) 
-			segment_optargs "${@:2}" ;;
+			segment_main "${@}" ;;
 		split)
-			split_optargs "${@:2}" ;;
+			split_main "${@}" ;;
       	trim)
-      		trim_optargs "${@:2}" ;;
+      		trim_main "${@}" ;;
 		convert)
-      		convert_optargs "${@:2}" ;;
+      		convert_main "${@}" ;;
       	concat)
-      		concat_optargs "${@:2}" ;;
+      		concat_main "${@}" ;;
       	extract)
-      		extract_optargs "${@:2}" ;;
+      		extract_main "${@}" ;;
       	musicvid)
-      		musicvid_optargs "${@:2}" ;;
+      		musicvid_main "${@}" ;;
       	*)
 			echo "Invalid command: ${1}"
 			exit 1
@@ -173,38 +221,6 @@ segment_usage_info () {
 	echo "Options:"
 	echo_universal_toggled_options
 	echo_universal_filename_options
-}
-
-segment_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dn:cys:e:pq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after;;
-			n)
-			  	output_file="${OPTARG}";;
-			c)
-				toggle_c_copy ;;
-			y) 
-			  	toggle_y_overwrite;;
-			s)
-			  	output_suffix="${OPTARG}" ;;
-			e)
-			  	output_extension="${OPTARG}" ;;
-			p)
-			  	toggle_is_parallel ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  	echo "Invalid argument: ${OPTARG}"
-			  	exit 1
-			  	;;
-        esac
-    done
-    shift $((OPTIND-1))
-
-    segment_main "${@}"
 }
 
 segment_main () {
@@ -242,46 +258,13 @@ segment_exec () {
 split_usage_info () {
 	echo ""
 	echo "Splits the media at the timestamp"
-	echo "Usage: ffnpeg split [OPTIONS] <timestamp> file ..."
+	echo "Usage:	ffnpeg split [OPTIONS] <file> <timestamp>"
+	echo "or	ffnpeg split [OPTIONS] <timestamp> file ..."
 	echo ""
 	echo "Options:"
 	echo_universal_toggled_options
 	echo_universal_filename_options
-	echo "-a		may cut to before the start time in order to avoid black screen"
-}
-
-split_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dn:cys:e:paq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after;;
-			n)
-			  	output_file="${OPTARG}";;
-			c)
-				toggle_c_copy ;;
-			y) 
-			  	toggle_y_overwrite;;
-			s)
-			  	output_suffix="${OPTARG}" ;;
-			e)
-			  	output_extension="${OPTARG}" ;;
-			p)
-			  	toggle_is_parallel ;;
-			a)
-			  	toggle_avoid_negative ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  	echo "Invalid argument: ${OPTARG}"
-			  	exit 1
-			  	;;
-        esac
-    done
-    shift $((OPTIND-1))
-
-    split_main "${@}"
+	echo "-t		may cut to before the start time in order to avoid black screen"
 }
 
 # $1 = timestamp
@@ -291,6 +274,26 @@ split_main () {
 		exit 1
 	fi
 
+	# regex checks if first arg is a timestamp
+    if [[ $1 =~ ^([0-9])+(:[0-9][0-9])*$ ]]; then
+    	splitm_main "${@}"
+    else
+    	splits_main "${@}"
+    fi
+}
+
+# split single
+splits_main () {
+	if [ $# -ne 2 ]; then
+		split_usage_info
+		exit 1
+	fi
+
+	splitm_main "${2}" "${1}"
+}
+
+# split multiple
+splitm_main () {
 	local timestamp="$1"
 	local input_files=("${@:2}")
 	
@@ -330,40 +333,10 @@ trim_usage_info () {
 	echo "Options:"
 	echo_universal_toggled_options
 	echo_universal_filename_options
-	echo "-a		may cut to before the start time in order to avoid black screen"
+	echo "-t		may cut to before the start time in order to avoid black screen"
 }
 
-trim_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dyn:cs:e:apq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after;;
-			y) 
-			  	toggle_y_overwrite;;
-			n)
-			  	output_file="${OPTARG}";;
-			c) 
-			  	toggle_c_copy;;
-			s)
-			  	output_suffix="${OPTARG}" ;;
-			e)
-			  	output_extension="${OPTARG}" ;;
-			a)
-			  	toggle_avoid_negative ;;
-			p)
-			  	toggle_is_parallel ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  	echo "Invalid argument: ${OPTARG}"
-			  	exit 1
-			  	;;
-        esac
-    done
-    shift $((OPTIND-1))
-
+trim_main () {
     # invalid args
     if [ $# -lt 3 ]; then
 		trim_usage_info
@@ -374,11 +347,12 @@ trim_optargs () {
     if [[ $1 =~ ^([0-9])+(:[0-9][0-9])*$ ]]; then
     	trimm_main "${@}"
     else
-    	trim_main "${@}"
+    	trims_main "${@}"
     fi
 }
 
-trim_main () {
+# trim single
+trims_main () {
 	if [ $# -ne 3 ]; then
 		trim_usage_info
 		exit 1
@@ -387,6 +361,7 @@ trim_main () {
 	trimm_main "${2}" "${3}" "${1}"
 }
 
+# trim multiple
 trimm_main () {
 	local start="$1"
 	local end="$2"
@@ -409,7 +384,7 @@ trim_exec () {
 
 	local output="${filename}${suffix}.${extension}"
 
-	ffmpeg -i "${3}" ${y_overwrite} -ss "${1}" -to "${2}" ${c_copy} ${avoid_negative} "${output}" &&
+	ffmpeg $q -i "${3}" ${y_overwrite} -ss "${1}" -to "${2}" ${c_copy} ${avoid_negative} "${output}" &&
 	{ if [ "$delete_after" = true ]; then rm "${3}" ; fi; }
 }
 
@@ -426,38 +401,6 @@ convert_usage_info () {
 	echo_universal_toggled_options
 	echo_universal_filename_options
 	echo "		Note: -n or -e is MANDATORY"
-}
-
-convert_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dcyn:s:e:pq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after;;
-			c) 
-			  	toggle_c_copy;;
-			y) 
-			  	toggle_y_overwrite;;
-			n)
-			  	output_file="${OPTARG}";;
-			s)
-			  	output_suffix="${OPTARG}" ;;
-			e)
-			  	output_extension="${OPTARG}" ;;
-			p)
-			  	toggle_is_parallel ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  echo "Invalid argument: ${OPTARG}"
-			  exit 1
-			  ;;
-        esac
-    done
-    shift $((OPTIND-1))
-
-    convert_main "${@}"
 }
 
 convert_main () {
@@ -482,7 +425,7 @@ convert_exec () {
 	local suffix=$(get_suffix '')
 
 	local output="${filename}${suffix}.${extension}"
-	ffmpeg -i "${1}" ${c_copy} ${y_overwrite} "${output}" &&
+	ffmpeg $q -i "${1}" ${c_copy} ${y_overwrite} "${output}" &&
 	{ if [ "$delete_after" = true ]; then rm "${1}" ; fi; }
 }
 
@@ -498,36 +441,6 @@ concat_usage_info () {
 	echo "Options:"
 	echo_universal_toggled_options
 	echo_universal_filename_options
-}
-
-concat_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dyn:ce:pq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after;;
-			y) 
-			  	toggle_y_overwrite;;
-			n)
-			  	output_file="${OPTARG}";;
-			c) 
-			  	toggle_c_copy;;
-			e)
-			  	output_extension="${OPTARG}" ;;
-			p)
-			  	toggle_is_parallel ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  	echo "Invalid argument: ${OPTARG}"
-			  	exit 1
-			  	;;
-        esac
-    done
-    shift $((OPTIND-1))
-
-    concat_main "${@}"
 }
 
 concat_main () {
@@ -548,7 +461,7 @@ concat_exec () {
 
 	local input_files=("${@}")
 
-	ffmpeg -f concat -safe 0 ${y_overwrite} \
+	ffmpeg $q -f concat -safe 0 ${y_overwrite} \
 	 -i <(for f in "${input_files[@]}"; do echo "file '$PWD/$f'"; done) \
 	 ${c_copy} "${output}" \
 	 && { if [ "$delete_after" = true ]; then rm "${input_files[@]}" ; fi; }
@@ -565,44 +478,9 @@ extract_usage_info () {
 	echo ""
 	echo "Options:"
 	echo_universal_toggled_options
-	echo "-a FORMAT		audio format to extract to"
-	echo "-v FORMAT		video format to extract to"
-	echo "-s SUFFIX		adds a suffix to the output filenames"
-}
-
-extracted_audio_format=''
-extracted_video_format=''
-
-extract_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dyca:v:s:pq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after;;
-			y) 
-			  	toggle_y_overwrite;;
-			c) 
-			  	toggle_c_copy;;
-			a)
-			  	extracted_audio_format="${OPTARG}";;
-			v)
-			  	extracted_video_format="${OPTARG}";;
-			s)
-			  	output_suffix="${OPTARG}";;
-			p)
-			  	toggle_is_parallel ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  	echo "Invalid argument: ${OPTARG}"
-			  	exit 1
-			  	;;
-        esac
-    done
-    shift $((OPTIND-1))
-
-    extract_main "${@}"
+	echo "-a FORMAT	audio format to extract to"
+	echo "-v FORMAT	video format to extract to"
+	echo "-s SUFFIX	adds a suffix to the output filenames"
 }
 
 extract_main () {
@@ -645,13 +523,13 @@ extract_exec () {
 
 	if [ "$extracted_audio_format" != '' ]; then 
 		local output="${filename}${a_suffix}.${extracted_audio_format}"
-		ffmpeg -i "${1}" ${y_overwrite} ${ca_copy} -q:a 0 -map a "${output}" || 
+		ffmpeg $q -i "${1}" ${y_overwrite} ${ca_copy} -q:a 0 -map a "${output}" || 
 		a_success=false
 	fi
 
 	if [ "$extracted_video_format" != '' ]; then 
 		local output="${filename}${v_suffix}.${extracted_video_format}"
-		ffmpeg -i "${1}" ${y_overwrite} ${cv_copy} -q:v 0 -map v "${output}" || 
+		ffmpeg $q -i "${1}" ${y_overwrite} ${cv_copy} -q:v 0 -map v "${output}" || 
 		v_success=false
 	fi
 
@@ -673,40 +551,6 @@ musicvid_usage_info () {
 	echo_universal_toggled_options
 	echo_universal_filename_options
 	echo "-l SCALE	sets the scale of the video (default 1280:720)"
-}
-
-musicvid_optargs () {
-	# process universal optargs
-	local OPTIND
-    while getopts "dyn:cs:e:l:pq" option; do
-    	case "${option}" in
-        	d) 
-			  	toggle_delete_after;;
-			y) 
-			  	toggle_y_overwrite;;
-			n)
-			  	output_file="${OPTARG}";;
-			c) 
-			  	toggle_c_copy;;
-			s)
-			  	output_suffix="${OPTARG}";;
-			e)
-			  	output_extension="${OPTARG}" ;;
-			l)
-			  	output_scale="${OPTARG}" ;;
-			p)
-			  	toggle_is_parallel ;;
-			q)
-			  	toggle_is_verbose ;;
-			\?)
-			  	echo "Invalid argument: ${OPTARG}"
-			  	exit 1
-			  	;;
-        esac
-    done
-    shift $((OPTIND-1))
-
-    musicvid_main "${@}"
 }
 
 musicvid_main () {
@@ -732,14 +576,6 @@ musicvid_exec () {
 	{ if [ "$delete_after" = true ]; then rm "${i}" ; fi; }
 }
 
-output_scale=''
-
-get_output_scale () {
-	local scale = '1280:720'
-	if [ "$output_scale" != '' ]; then scale="$output_scale"; fi
-	echo "$scale"
-}
-
 # $1 = image
 # $2 = video
 musicvid_exec_inner () {
@@ -751,13 +587,13 @@ musicvid_exec_inner () {
 	local output1="${filename}${suffix}.flv" 
 	local scale="1280:720"
 
-	ffmpeg -r 1 -loop 1 -i "$1" -i "$2" -c:a copy -r 1 -shortest \
+	ffmpeg $q -r 1 -loop 1 -i "$1" -i "$2" -c:a copy -r 1 -shortest \
 	 -vf scale="$scale" "$output1" || return 1
 
 	local extension=$(get_extension '')
 	if [ "$extension" != '' ]; then
 		local output2="${filename}${suffix}.${extension}" 
-		ffmpeg -i "$output1" $c_copy "$output2"
+		ffmpeg $q -i "$output1" $c_copy "$output2"
 		rm "$output1"
 	else
 		return 0
@@ -768,6 +604,6 @@ musicvid_exec_inner () {
 # Actual entrance point
 #=================================
 
-main_optargs "${@}"
+process_args "${@}"
 
 
