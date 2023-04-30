@@ -28,6 +28,7 @@ echo_universal_toggled_options () {
 }
 
 echo_universal_filename_options () {
+	echo "-l PATH	sets location of output file"
 	echo "-n NAME 	sets the output filename and extension"
 	echo "-s SUFFIX 	adds a suffix to the output filenames"
 	echo "-e FORMAT 	sets the output's extension. Will overwrite -n's extension"
@@ -38,13 +39,22 @@ echo_universal_filename_options () {
 #=================================
 
 # ==== configs ====
+output_location=''
 output_file=''
 output_suffix=''
 output_extension=''
 
+# usage: $(get_location)
+get_location () {
+	local location='./'
+	if [ "$output_location" != "" ]; then location="$output_location"; fi
+	echo "$location"
+}
+
 # usage: $(get_filename DEFAULT)
+# will strip path from default name
 get_filename () {
-	local filename="$1"
+	local filename=$(basename "$1")
 	if [ "$output_file" != "" ]; then filename="${output_file%.*}"; fi
 	echo "$filename"
 }
@@ -54,6 +64,14 @@ get_suffix () {
 	local suffix="$1"
 	if [ "$output_suffix" != "" ]; then suffix="$output_suffix"; fi
 	echo "$suffix"
+}
+
+# usage: $(get_filename DEFAULT_FILENAME DEFAULT_SUFFIX)
+get_outname() {
+	local location=$(get_location)
+	local filename=$(get_filename "$1")
+	local suffix=$(get_suffix "$2")
+	echo "$location/$filename$suffix"
 }
 
 # usage: $(get_extension DEFAULT)
@@ -110,8 +128,9 @@ extracted_video_format=''
 # ==== used by musicvid ====
 output_scale=''
 
+# usage: $(get_output_scale DEFAULT)
 get_output_scale () {
-	local scale = '1280:720'
+	local scale="$1"
 	if [ "$output_scale" != '' ]; then scale="$output_scale"; fi
 	echo "$scale"
 }
@@ -129,7 +148,7 @@ process_args () {
 
 	while [ $# -gt 0 ]; do
 		local OPTIND=1
-    	while getopts "dcypqn:s:e:ta:v:l:" option; do
+    	while getopts "dcypql:n:s:e:ta:v:z:" option; do
     		case "${option}" in
     			# ==== Universal Optargs ====
         		d) 
@@ -142,6 +161,8 @@ process_args () {
 				  	toggle_is_parallel ;;
 				q)
 			 	 	toggle_is_quiet ;;
+				l)
+			  		output_location="${OPTARG}" ;;
 				n)
 					output_file="${OPTARG}" ;;
 				s)
@@ -161,7 +182,7 @@ process_args () {
 			  		extracted_video_format="${OPTARG}";;
 
 					# used by musicvid
-				l)  
+				z)  
 					output_scale="${OPTARG}" ;;
 
 				\?)
@@ -242,12 +263,11 @@ segment_main () {
 # $1 = segment length
 # $2 = input file
 segment_exec () {
-	local filename=$(get_filename "${2%.*}")
+	local outname=$(get_outname "${2%.*}" '')
 	local extension=$(get_extension "${2##*.}")
-	local suffix=$(get_suffix '')
 
 	ffmpeg $q -i "${2}" -map 0 ${c_copy} ${y_overwrite} -f segment -segment_time ${1} \
-	-reset_timestamps 1 "${filename}${suffix}_%03d.${extension}" &&
+	-reset_timestamps 1 "${outname}_%03d.${extension}" &&
 	{ if [ "$delete_after" = true ]; then rm "${2}" ; fi; }
 }
 
@@ -307,12 +327,11 @@ splitm_main () {
 # $1 = timestamp
 # $2 = input file
 split_exec () {
-	local filename=$(get_filename "${2%.*}")
+	local outname=$(get_outname "${2%.*}" '_SPLIT')
 	local extension=$(get_extension "${2##*.}")
-	local suffix=$(get_suffix '_SPLIT')
 
-	local output="${filename}${suffix}.${extension}"
-	local output2="${filename}${suffix}2.${extension}"
+	local output="${outname}.${extension}"
+	local output2="${outname}2.${extension}"
 	local duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 $2)"
 
 	ffmpeg $q -i "${2}" ${y_overwrite} -ss 0 -to "${1}" ${c_copy} ${avoid_negative} "${output}" &&
@@ -378,11 +397,10 @@ trimm_main () {
 # $2 = end
 # $3 = input file
 trim_exec () {
-	local filename=$(get_filename "${3%.*}")
+	local outname=$(get_outname "${3%.*}" '_TRIMMED')
 	local extension=$(get_extension "${3##*.}")
-	local suffix=$(get_suffix '_TRIMMED')
 
-	local output="${filename}${suffix}.${extension}"
+	local output="${outname}.${extension}"
 
 	ffmpeg $q -i "${3}" ${y_overwrite} -ss "${1}" -to "${2}" ${c_copy} ${avoid_negative} "${output}" &&
 	{ if [ "$delete_after" = true ]; then rm "${3}" ; fi; }
@@ -420,11 +438,10 @@ convert_main () {
 
 # $1 = input file
 convert_exec () {
-	local filename=$(get_filename "${1%.*}")
+	local outname=$(get_outname "${1%.*}" '')
 	local extension=$(get_extension '')
-	local suffix=$(get_suffix '')
 
-	local output="${filename}${suffix}.${extension}"
+	local output="${outname}.${extension}"
 	ffmpeg $q -i "${1}" ${c_copy} ${y_overwrite} "${output}" &&
 	{ if [ "$delete_after" = true ]; then rm "${1}" ; fi; }
 }
@@ -453,11 +470,10 @@ concat_main () {
 }
 
 concat_exec () {
-	local filename=$(get_filename "output")
+	local outname=$(get_outname "output" '')
 	local extension=$(get_extension "${1##*.}")
-	local suffix=$(get_suffix '')
 
-	local output="${filename}${suffix}.${extension}"
+	local output="${outname}.${extension}"
 
 	local input_files=("${@}")
 
@@ -511,9 +527,8 @@ get_cv_copy () {
 
 # $1 = input file
 extract_exec () {
-	local filename=$(get_filename "${1%.*}")
-	local a_suffix=$(get_suffix '')
-	local v_suffix=$(get_suffix '_EXTRACTED')
+	local a_outname=$(get_outname "${1%.*}" '')
+	local v_outname=$(get_outname "${1%.*}" '_EXTRACTED')
 
 	local ca_copy=$(get_ca_copy)
 	local cv_copy=$(get_cv_copy)
@@ -522,13 +537,13 @@ extract_exec () {
 	local v_success=true
 
 	if [ "$extracted_audio_format" != '' ]; then 
-		local output="${filename}${a_suffix}.${extracted_audio_format}"
+		local output="${a_outname}.${extracted_audio_format}"
 		ffmpeg $q -i "${1}" ${y_overwrite} ${ca_copy} -q:a 0 -map a "${output}" || 
 		a_success=false
 	fi
 
 	if [ "$extracted_video_format" != '' ]; then 
-		local output="${filename}${v_suffix}.${extracted_video_format}"
+		local output="${v_outname}.${extracted_video_format}"
 		ffmpeg $q -i "${1}" ${y_overwrite} ${cv_copy} -q:v 0 -map v "${output}" || 
 		v_success=false
 	fi
@@ -550,7 +565,7 @@ musicvid_usage_info () {
 	echo "Options:"
 	echo_universal_toggled_options
 	echo_universal_filename_options
-	echo "-l SCALE	sets the scale of the video (default 1280:720)"
+	echo "-z SCALE	sets the scale of the video (default 1280:720)"
 }
 
 musicvid_main () {
@@ -576,28 +591,31 @@ musicvid_exec () {
 	{ if [ "$delete_after" = true ]; then rm "${i}" ; fi; }
 }
 
+get_acodec_copy () {
+	if [ "$c_copy" = '-c copy' ]; then
+		echo '-c:a copy'
+	else
+		echo ''
+	fi
+}
+
 # $1 = image
-# $2 = video
+# $2 = audio
 musicvid_exec_inner () {
-	local filename=$(get_filename "${2%.*}")
-	local suffix=$(get_suffix '')
+	local outname=$(get_outname "${2%.*}" '')
+	local extension=$(get_extension 'flv')
 
 	local acodec_copy=$(get_acodec_copy)
 
-	local output1="${filename}${suffix}.flv" 
-	local scale="1280:720"
+	local output="${outname}.${extension}" 
+	local scale=$(get_output_scale '1280:720')
 
-	ffmpeg $q -r 1 -loop 1 -i "$1" -i "$2" -c:a copy -r 1 -shortest \
-	 -vf scale="$scale" "$output1" || return 1
+	local duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$2")
 
-	local extension=$(get_extension '')
-	if [ "$extension" != '' ]; then
-		local output2="${filename}${suffix}.${extension}" 
-		ffmpeg $q -i "$output1" $c_copy "$output2"
-		rm "$output1"
-	else
-		return 0
-	fi
+	ffmpeg $q -r 1 -loop 1 -i "$1" -i "$2" $acodec_copy -r 1 -shortest \
+	-ss 0 -to "$duration" \
+	-vf scale="$scale":force_original_aspect_ratio=1,pad="$scale":'(ow-iw)/2:(oh-ih)/2' \
+	"$output"
 }
 
 #=================================
