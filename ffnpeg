@@ -20,18 +20,18 @@ usage_info () {
 }
 
 echo_universal_toggled_options () {
-	echo "-d 		deletes input file afterwards (use with caution!)"
-	echo "-c 		turn off -c copy (needed when converting between codecs)"
+	echo "-d		deletes input file afterwards (use with caution!)"
+	echo "-c		turn off -c copy (needed when converting between codecs)"
 	echo "-y		overwrite output files without asking"
 	echo "-p		runs ffmpeg on each file in parallel"
 	echo "-q		turn on quiet mode"
 }
 
 echo_universal_filename_options () {
-	echo "-l PATH	sets location of output file"
-	echo "-n NAME 	sets the output filename and extension"
-	echo "-s SUFFIX 	adds a suffix to the output filenames"
-	echo "-e FORMAT 	sets the output's extension. Will overwrite -n's extension"
+	echo "-l PATH		sets location of output file"
+	echo "-n NAME		sets the output filename and extension"
+	echo "-s SUFFIX	adds a suffix to the output filenames"
+	echo "-e FORMAT	sets the output's extension. Will overwrite -n's extension"
 }
 
 #=================================
@@ -148,8 +148,11 @@ process_args () {
 
 	while [ $# -gt 0 ]; do
 		local OPTIND=1
-    	while getopts "dcypql:n:s:e:ta:v:z:" option; do
+    	while getopts "hdcypql:n:s:e:ta:v:z:" option; do
     		case "${option}" in
+    			h)
+    				usage_info
+    				exit 0;;
     			# ==== Universal Optargs ====
         		d) 
 			 	 	toggle_delete_after ;;
