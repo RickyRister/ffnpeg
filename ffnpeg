@@ -13,6 +13,7 @@ usage_info () {
 	echo "concat		Concats one or more videos"
 	echo "extract		Extracts the audio or video from the video"
 	echo "musicvid	Combines an audio file with a static image"
+	echo "replace		Replaces the audio of a video"
 	echo ""
 	echo "Universal Options:"
 	echo_universal_toggled_options
@@ -135,6 +136,18 @@ get_output_scale () {
 	echo "$scale"
 }
 
+# ==== used by commands that only map a certain stream ====
+get_ca_copy () {
+	local ca_copy='-c:a copy'
+	if [ "${c_copy}" = '' ]; then ca_copy=''; fi
+	echo "$ca_copy"
+}
+
+get_cv_copy () {
+	local cv_copy='-c:v copy'
+	if [ "${c_copy}" = '' ]; then cv_copy=''; fi
+	echo "$cv_copy"
+}
 
 #=================================
 # Main
@@ -226,6 +239,8 @@ select_command () {
       		extract_main "${@}" ;;
       	musicvid)
       		musicvid_main "${@}" ;;
+      	replace) 
+			replace_main "${@}" ;;
       	*)
 			echo "Invalid command: ${1}"
 			exit 1
@@ -516,18 +531,6 @@ extract_main () {
 	wait
 }
 
-get_ca_copy () {
-	local ca_copy='-c:a copy'
-	if [ "${c_copy}" = '' ]; then ca_copy=''; fi
-	echo "$ca_copy"
-}
-
-get_cv_copy () {
-	local cv_copy='-c:v copy'
-	if [ "${c_copy}" = '' ]; then cv_copy=''; fi
-	echo "$cv_copy"
-}
-
 # $1 = input file
 extract_exec () {
 	local a_outname=$(get_outname "${1%.*}" '')
@@ -619,6 +622,42 @@ musicvid_exec_inner () {
 	-ss 0 -to "$duration" \
 	-vf scale="$scale":force_original_aspect_ratio=1,pad="$scale":'(ow-iw)/2:(oh-ih)/2' \
 	"$output"
+}
+
+#=================================
+# Replace
+#=================================
+
+replace_usage_info () {
+	echo ""
+	echo "Replaces the audio of the first file with audio of the second"
+	echo "Usage: ffnpeg replace [OPTIONS] video audio"
+	echo ""
+	echo "Options:"
+	echo_universal_toggled_options
+	echo_universal_filename_options
+}
+
+replace_main () {
+	if [ $# -lt 1 ]; then
+		replace_usage_info
+		exit 1
+	fi
+
+	replace_exec "${@}"
+}
+
+# $1 = input video
+# $2 = input audio
+replace_exec () {
+	local outname=$(get_outname "${1%.*}" '_REPLACED')
+	local extension=$(get_extension "${1##*.}")
+
+	local output="${outname}.${extension}"
+
+	ffmpeg $q -i "$1" -i "$2" $(get_cv_copy)  \
+	-map 0:v:0 -map 1:a:0 -shortest ${y_overwrite} "${output}" &&
+	{ if [ "$delete_after" = true ]; then rm "$1" "$2" ; fi; }
 }
 
 #=================================
