@@ -2,7 +2,7 @@
 
 usage_info () {
 	echo ""
-	echo "Shortcut for common ffmpeg usages so I don't I have to keep looking them up"
+	echo "Shortcut for common ffmpeg usages so I don't have to keep looking them up"
 	echo "Usage: ffnpeg [options] <command> [options] file ..."
 	echo ""
 	echo "Available Commands:"
