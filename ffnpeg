@@ -275,7 +275,7 @@ segment_main () {
 	local input_files=("${@:2}")
 	
 	for i in "${input_files[@]}"; do
-		if [ "$is_parallel" = true ]; then segment_exec ${segment_length} "${i}" &
+		if $is_parallel; then segment_exec ${segment_length} "${i}" &
 		else segment_exec ${segment_length} "${i}"; fi
 	done
 	wait
@@ -289,7 +289,7 @@ segment_exec () {
 
 	ffmpeg $q -i "${2}" -map 0 ${c_copy} ${y_overwrite} -f segment -segment_time ${1} \
 	-reset_timestamps 1 "${outname}_%03d.${extension}" &&
-	{ if [ "$delete_after" = true ]; then rm "${2}" ; fi; }
+	{ if $delete_after; then rm "${2}" ; fi; }
 }
 
 #=================================
@@ -339,7 +339,7 @@ splitm_main () {
 	local input_files=("${@:2}")
 	
 	for i in "${input_files[@]}"; do
-		if [ "$is_parallel" = true ]; then split_exec ${timestamp} "${i}" &
+		if $is_parallel; then split_exec ${timestamp} "${i}" &
 		else split_exec ${timestamp} "${i}"; fi
 	done
 	wait
@@ -357,7 +357,7 @@ split_exec () {
 
 	ffmpeg $q -i "${2}" ${y_overwrite} -ss 0 -to "${1}" ${c_copy} ${avoid_negative} "${output}" &&
 	ffmpeg $q -i "${2}" ${y_overwrite} -ss "${1}" -to "${duration}" ${c_copy} ${avoid_negative} "${output2}" &&
-	{ if [ "$delete_after" = true ]; then rm "${2}" ; fi; }
+	{ if $delete_after; then rm "${2}" ; fi; }
 }
 
 #=================================
@@ -408,7 +408,7 @@ trimm_main () {
 	local input_files=("${@:3}")
 	
 	for i in "${input_files[@]}"; do
-		if [ "$is_parallel" = true ]; then trim_exec "${start}" "${end}" "${i}" &
+		if $is_parallel; then trim_exec "${start}" "${end}" "${i}" &
 		else trim_exec "${start}" "${end}" "${i}"; fi
 	done
 	wait
@@ -424,7 +424,7 @@ trim_exec () {
 	local output="${outname}.${extension}"
 
 	ffmpeg $q -i "${3}" ${y_overwrite} -ss "${1}" -to "${2}" ${c_copy} ${avoid_negative} "${output}" &&
-	{ if [ "$delete_after" = true ]; then rm "${3}" ; fi; }
+	{ if $delete_after; then rm "${3}" ; fi; }
 }
 
 #=================================
@@ -451,7 +451,7 @@ convert_main () {
 	local input_files=("${@:1}")
 	
 	for i in "${input_files[@]}"; do
-		if [ "$is_parallel" = true ]; then convert_exec "${i}" &
+		if $is_parallel; then convert_exec "${i}" &
 		else convert_exec "${i}"; fi
 	done
 	wait
@@ -464,7 +464,7 @@ convert_exec () {
 
 	local output="${outname}.${extension}"
 	ffmpeg $q -i "${1}" ${c_copy} ${y_overwrite} "${output}" &&
-	{ if [ "$delete_after" = true ]; then rm "${1}" ; fi; }
+	{ if $delete_after; then rm "${1}" ; fi; }
 }
 
 #=================================
@@ -501,7 +501,7 @@ concat_exec () {
 	ffmpeg $q -f concat -safe 0 ${y_overwrite} \
 	 -i <(for f in "${input_files[@]}"; do echo "file '$PWD/$f'"; done) \
 	 ${c_copy} "${output}" \
-	 && { if [ "$delete_after" = true ]; then rm "${input_files[@]}" ; fi; }
+	 && { if $delete_after; then rm "${input_files[@]}" ; fi; }
 }
 
 #=================================
@@ -528,7 +528,7 @@ extract_main () {
 
 	local input_files=("${@}")
 	for i in "${input_files[@]}"; do
-		if [ "$is_parallel" = true ]; then extract_exec "${i}" &
+		if $is_parallel; then extract_exec "${i}" &
 		else extract_exec "${i}"; fi
 	done
 	wait
@@ -557,8 +557,8 @@ extract_exec () {
 		v_success=false
 	fi
 
-	if [ "$a_success" = true ] && [ "$v_success" = true ]; then
-		if [ "$delete_after" = true ]; then rm "${i}" ; fi; 
+	if $a_success && $v_success; then
+		if $delete_after; then rm "${i}" ; fi; 
 	fi
 }
 
@@ -587,7 +587,7 @@ musicvid_main () {
 
 	local input_files=("${@:2}")
 	for i in "${input_files[@]}"; do
-		if [ "$is_parallel" = true ]; then musicvid_exec "$image" "${i}" &
+		if $is_parallel; then musicvid_exec "$image" "${i}" &
 		else musicvid_exec "$image" "${i}"; fi
 	done
 	wait
@@ -597,7 +597,7 @@ musicvid_main () {
 # $2 = video
 musicvid_exec () {
 	musicvid_exec_inner "$image" "${i}" &&
-	{ if [ "$delete_after" = true ]; then rm "${i}" ; fi; }
+	{ if $delete_after; then rm "${i}" ; fi; }
 }
 
 get_acodec_copy () {
@@ -660,7 +660,7 @@ replace_exec () {
 
 	ffmpeg $q -i "$1" -i "$2" $(get_cv_copy)  \
 	-map 0:v:0 -map 1:a:0 -shortest ${y_overwrite} "${output}" &&
-	{ if [ "$delete_after" = true ]; then rm "$1" "$2" ; fi; }
+	{ if $delete_after; then rm "$1" "$2" ; fi; }
 }
 
 #=================================
