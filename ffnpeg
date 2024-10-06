@@ -356,7 +356,7 @@ split_exec () {
 	local duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 $2)"
 
 	ffmpeg $q -i "${2}" ${y_overwrite} -ss 0 -to "${1}" ${c_copy} ${avoid_negative} "${output}" &&
-	ffmpeg $q -i "${2}" ${y_overwrite} -ss "${1}" -to "${duration}" ${c_copy} ${avoid_negative} "${output2}"
+	ffmpeg $q -i "${2}" ${y_overwrite} -ss "${1}" -to "${duration}" ${c_copy} ${avoid_negative} "${output2}" &&
 	{ if [ "$delete_after" = true ]; then rm "${2}" ; fi; }
 }
 
