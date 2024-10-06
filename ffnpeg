@@ -206,7 +206,6 @@ process_args () {
 					output_scale="${OPTARG}" ;;
 
 				\?)
-			  		echo "Invalid argument: ${OPTARG}"
 			  		exit 1 ;;
         	esac
     	done
@@ -246,7 +245,7 @@ select_command () {
       	replace) 
 			replace_main "${@}" ;;
       	*)
-			echo "Invalid command: ${1}"
+			echo "Invalid command: $command"
 			exit 1
 			;;
 	esac
