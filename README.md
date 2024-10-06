@@ -10,12 +10,33 @@ Just copy or link `ffnpeg` to your `$PATH`.
 
 Run with `-h` to get usage info.
 
-```sh
-ffnpeg -h
+```
+Usage: ffnpeg [options] <command> [options] file ...
+
+Available Commands:
+segment		Splits media into segments of a given length
+split		Splits the media at the timestamp
+trim		Trims media to the given timestamps
+convert		Converts one or more files into a different format
+concat		Concats one or more videos
+extract		Extracts the audio or video from the video
+musicvid	Combines an audio file with a static image
+replace		Replaces the audio of a video
+
+Universal Options:
+-d		deletes input file afterwards (use with caution!)
+-c		turn off -c copy (needed when converting between codecs)
+-y		overwrite output files without asking
+-p		runs ffmpeg on each file in parallel
+-q		turn on quiet mode
+-l PATH		sets location of output file
+-n NAME		sets the output filename and extension
+-s SUFFIX	adds a suffix to the output filenames
+-e FORMAT	sets the output's extension. Will overwrite -n's extension
 ```
 
-ffnpeg contains several subcommands.
-You can run `-h` with those subcommands to get usage info for them.
+ffnpeg contains several commands.
+You can run `-h` with those commands to get the usage info for them.
 
 ## Known Bugs
 
