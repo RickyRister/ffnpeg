@@ -84,11 +84,16 @@ get_extension () {
 }
 
 # ==== toggles ====
+print_help=false
 delete_after=false
 y_overwrite=''
 c_copy='-c copy'
 is_parallel=false
 q='-hide_banner'
+
+toggle_print_help () {
+	print_help=true
+}
 
 toggle_delete_after () {
 	delete_after=true
@@ -164,8 +169,7 @@ process_args () {
     	while getopts "hdcypql:n:s:e:ta:v:z:" option; do
     		case "${option}" in
     			h)
-    				usage_info
-    				exit 0;;
+					toggle_print_help ;;
     			# ==== Universal Optargs ====
         		d) 
 			 	 	toggle_delete_after ;;
@@ -263,7 +267,7 @@ segment_usage_info () {
 }
 
 segment_main () {
-    if [ $# -lt 2 ]; then
+    if $print_help || [ $# -lt 2 ]; then
 		segment_usage_info
 		exit 1
 	fi
@@ -307,7 +311,7 @@ split_usage_info () {
 
 # $1 = timestamp
 split_main () {
-    if [ $# -lt 2 ]; then
+    if $print_help || [ $# -lt 2 ]; then
 		split_usage_info
 		exit 1
 	fi
@@ -375,7 +379,7 @@ trim_usage_info () {
 
 trim_main () {
     # invalid args
-    if [ $# -lt 3 ]; then
+    if $print_help || [ $# -lt 3 ]; then
 		trim_usage_info
 		exit 1
 	fi
@@ -440,7 +444,7 @@ convert_usage_info () {
 }
 
 convert_main () {
-	if [ $# -lt 1 ] || [ "$(get_extension '')" = '' ] ; then
+	if $print_help || [ $# -lt 1 ] || [ "$(get_extension '')" = '' ] ; then
 		convert_usage_info
 		exit 1
 	fi
@@ -479,7 +483,7 @@ concat_usage_info () {
 }
 
 concat_main () {
-	if [ $# -lt 1 ]; then
+	if $print_help || [ $# -lt 1 ]; then
 		concat_usage_info
 		exit 1
 	fi
@@ -518,7 +522,7 @@ extract_usage_info () {
 }
 
 extract_main () {
-	if [ $# -lt 1 ]; then
+	if $print_help || [ $# -lt 1 ]; then
 		extract_usage_info
 		exit 1
 	fi
@@ -575,7 +579,7 @@ musicvid_usage_info () {
 }
 
 musicvid_main () {
-	if [ $# -lt 2 ]; then
+	if $print_help || [ $# -lt 2 ]; then
 		musicvid_usage_info
 		exit 1
 	fi
@@ -639,7 +643,7 @@ replace_usage_info () {
 }
 
 replace_main () {
-	if [ $# -lt 1 ]; then
+	if $print_help || [ $# -lt 1 ]; then
 		replace_usage_info
 		exit 1
 	fi
